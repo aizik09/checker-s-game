@@ -209,27 +209,37 @@
           return best;
         }
 
-        function Piece({ player, king, selected, mustJump, skin }) {
+         function Piece({ player, king, selected, mustJump, skin }) {
           const isW = player === "white";
           let bgStyle = "";
-          let borderStyle = mustJump ? "3px solid #f59e0b" : "1px solid rgba(0,0,0,0.4)";
+          
+          // Вычисляем динамический цвет контура:
+          // Если шашка белая — делаем контур темным, если черная — контрастным светло-серым
+          let borderColor = isW ? "rgba(0,0,0,0.6)" : "rgba(226,232,240,0.8)";
+
+          // Приоритет для спец-состояний (выбор или обязательный ход)
+          if (mustJump) borderColor = "#f59e0b";
+          else if (selected) borderColor = "#ffffff";
 
           if (skin === "neon") {
             bgStyle = isW ? "radial-gradient(circle, #06b6d4, #0891b2)" : "radial-gradient(circle, #f43f5e, #e11d48)";
-            if (selected) borderStyle = "3px solid #fff";
+            if (selected) borderColor = "#fff";
           } else if (skin === "gold") {
             bgStyle = isW ? "radial-gradient(circle at 35% 30%, #fef08a, #ca8a04)" : "radial-gradient(circle at 35% 30%, #78350f, #451a03)";
-            if (selected) borderStyle = "3px solid #f59e0b";
+            if (selected) borderColor = "#f59e0b";
           } else {
             bgStyle = isW ? "radial-gradient(circle at 35% 30%, #fcfaf2, #d6d3d1)" : "radial-gradient(circle at 35% 30%, #4b5563, #1f2937)";
-            if (selected) borderStyle = "3px solid #f59e0b";
           }
 
           return (
             <div className="w-full h-full flex items-center justify-center p-[10%]">
               <div
                 className="w-full h-full rounded-full relative flex items-center justify-center shadow-lg transition-all"
-                style={{ background: bgStyle, border: borderStyle, transform: selected ? "scale(1.12)" : "scale(1)" }}
+                style={{ 
+                  background: bgStyle, 
+                  border: `2px solid ${borderColor}`, // Применяем более жирный 2px контрастный контур
+                  transform: selected ? "scale(1.12)" : "scale(1)" 
+                }}
               >
                 {king && <span className="text-[clamp(14px,3.5vw,24px)] text-amber-400 select-none font-bold">♛</span>}
               </div>
