@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,43 +23,6 @@
 
     <script type="text/babel">
         const { useState, useCallback, useEffect, useRef } = React;
-
-        const EMPTY = 0, WHITE = 1, BLACK = 2, WHITE_KING = 3, BLACK_KING = 4;
-        const isWhite = (p) => p === WHITE || p === WHITE_KING;
-        const isBlack = (p) => p === BLACK || p === BLACK_KING;
-        const isKing = (p) => p === WHITE_KING || p === BLACK_KING;
-        const owns = (p, player) => player === "white" ? isWhite(p) : isBlack(p);
-        const opponent = (player) => player === "white" ? "black" : "white";
-
-        function initBoard() {
-          const b = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
-          for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-              if ((r + c) % 2 === 1) {
-                if (r < 3) b[r][c] = BLACK;
-                else if (r > 4) b[r][c] = WHITE;
-              }
-            }
-          }
-          return b;
-        }
-
-        function getJumps(board, r, c, player) {
-          const piece = board[r][c];
-          const jumps = [];
-          if (!owns(piece, player)) return jumps;
-          const king = isKing(piece);
-          const oppFn = player === "white" ? isBlack : isWhite;
-          const dirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
-
-          if (king) {
-            for (const [dr, dc] of dirs) {
-              let nr = r + dr, nc = c + dc;
-              while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
-                if (owns(board[nr][nc], player)) break;
-                if (oppFn(board[nr][nc])) {
-                  let lr = nr + dr, lc = nc + dc;
-                  while (lr >= 0 && lr < 8 && lc >= 0 && lc < 8 && board[lr][lc] === EMPTY) {
                     jumps.push({ from: [r, c], to: [lr, lc], captured: [nr, nc], capturedPiece: board[nr][nc] });
                     lr += dr; lc += dc;
                   }
@@ -192,13 +155,11 @@
           }
         }
 
-        /* [ИЗМЕНЕНИЕ 1] Перенесли глубину просчета сложности в аргумент функции ИИ */
         function getBestAIMove(board, currentDifficulty) {
           const j = getAllJumps(board, "black");
           const m = j.length > 0 ? j : getAllMoves(board, "black");
           if (m.length === 0) return null;
           
-          // Вычисляем глубину: Слабый = 1 (смотрит на 1 ход), Средний = 3, Сильный = 5 (думает глубоко)
           const depth = currentDifficulty === "easy" ? 1 : currentDifficulty === "medium" ? 3 : 5;
 
           let best = m[0], bestScore = -Infinity;
@@ -209,15 +170,12 @@
           return best;
         }
 
-         function Piece({ player, king, selected, mustJump, skin }) {
+        function Piece({ player, king, selected, mustJump, skin }) {
           const isW = player === "white";
           let bgStyle = "";
           
-          // Вычисляем динамический цвет контура:
-          // Если шашка белая — делаем контур темным, если черная — контрастным светло-серым
           let borderColor = isW ? "rgba(0,0,0,0.6)" : "rgba(226,232,240,0.8)";
 
-          // Приоритет для спец-состояний (выбор или обязательный ход)
           if (mustJump) borderColor = "#f59e0b";
           else if (selected) borderColor = "#ffffff";
 
@@ -237,7 +195,7 @@
                 className="w-full h-full rounded-full relative flex items-center justify-center shadow-lg transition-all"
                 style={{ 
                   background: bgStyle, 
-                  border: `2px solid ${borderColor}`, // Применяем более жирный 2px контрастный контур
+                  border: `2px solid ${borderColor}`, 
                   transform: selected ? "scale(1.12)" : "scale(1)" 
                 }}
               >
@@ -260,12 +218,24 @@
           const [coachMsg, setCoachMsg] = useState("Привет! Я твой AI Coach. Сделай первый ход, и я проанализирую твою стратегию.");
           const [isBlitz, setIsBlitz] = useState(false);
           const [timeLeft, setTimeLeft] = useState(180);
-
-          /* [ИЗМЕНЕНИЕ 2] Новая переменная для хранения текущего выбранного уровня сложности */
           const [difficulty, setDifficulty] = useState("medium"); 
 
           const activeJumps = getAllJumps(board, turn);
           const hasMustJump = activeJumps.length > 0;
+
+          const formatTime = (seconds) => {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+          };
+
+          const resetGame = () => {
+            setBoard(initBoard());
+            setTurn("white");
+            setSelected(null);
+            setWinner(null);
+            setTimeLeft(180);
+          };
 
           useEffect(() => {
             if (!isBlitz || winner) return;
@@ -286,7 +256,6 @@
           useEffect(() => {
             if (gameMode === "ai" && turn === "black" && !winner) {
               const timer = setTimeout(() => {
-                /* [ИЗМЕНЕНИЕ 3] Передаем уровень сложности difficulty в ИИ-анализатор */
                 const aiMove = getBestAIMove(board, difficulty);
                 if (aiMove) {
                   const nextBoard = applyMove(board, aiMove);
@@ -311,7 +280,7 @@
               }, 600);
               return () => clearTimeout(timer);
             }
-          }, [turn, board, gameMode, winner, difficulty]); /* Зависимость от уровня сложности */
+          }, [turn, board, gameMode, winner, difficulty]);
 
           const handleCellClick = (r, c) => {
             if (gameMode === "ai" && turn === "black") return;
@@ -382,16 +351,8 @@
             setIsPro(true);
             setShowPayModal(false);
             setSkin("neon");
-            setDifficulty("hard"); /* [ИЗМЕНЕНИЕ 4] При оплате сразу переключаем на сложный ИИ */
+            setDifficulty("hard");
             setCoachMsg("AI Coach: Спасибо за подписку! Доступ ко всем премиум-скинам и максимальному ИИ-эксперту открыт.");
-          };
-
-          const resetGame = () => {
-            setBoard(initBoard());
-            setTurn("white");
-            setSelected(null);
-            setWinner(null);
-            setTimeLeft(180);
           };
 
           return (
@@ -446,7 +407,6 @@
                   </button>
                 </div>
 
-                {/* [ИЗМЕНЕНИЕ 5] ДОБАВИЛИ КНОПКИ ВЫБОРА УРОВНЯ СЛОЖНОСТИ НА ЭКРАН И ПОДВЯЗАЛИ ИХ К ПЕЙВОЛЛУ */}
                 {gameMode === "ai" && (
                   <div className="flex gap-2 mb-4 bg-slate-950/80 p-1 rounded-xl border border-slate-800/60 shadow-sm w-full justify-center">
                     <button onClick={() => setDifficulty("easy")} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition ${difficulty === 'easy' ? 'bg-emerald-500/20 border border-emerald-500 text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-300'}`}>
@@ -512,28 +472,24 @@
                   </div>
                 </div>
 
-               <div className="w-full bg-slate-900/80 rounded-xl p-3 border border-slate-800 shadow-md flex flex-col gap-2">
-  {winner ? (
-    <div className="text-center text-base font-bold text-emerald-400 font-['Cinzel']">
-      Победили {winner === 'white' ? 'Белые' : 'Черные'}! 🎉
-    </div>
-  ) : (
-    <div className="flex justify-between items-center px-4 text-sm">
-      <span className="text-slate-400">Ход:</span>
-      <span className={`font-bold tracking-wider ${turn === 'white' ? 'text-amber-400' : 'text-slate-300'}`}>
-        {turn === 'white' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ'} {gameMode === 'ai' && turn === 'black' && '(ИИ...)'}
-      </span>
-    </div>
-  )}
-  
-  {/* Кнопка "Начать заново", которая идеально встанет на любом экране */}
-  <button 
-    onClick={resetGame} 
-    className="w-full py-1.5 mt-1 bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-300 font-medium text-xs rounded-lg transition border border-slate-700/50"
-  >
-    🔄 Начать заново
-  </button>
-</div>
+                <div className="w-full bg-slate-900/80 rounded-xl p-3 border border-slate-800 shadow-md flex flex-col gap-2">
+                  {winner ? (
+                    <div className="text-center text-base font-bold text-emerald-400 font-['Cinzel']">
+                      Победили {winner === 'white' ? 'Белые' : 'Черные'}! 🎉
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center px-4 text-sm">
+                      <span className="text-slate-400">Ход:</span>
+                      <span className={`font-bold tracking-wider ${turn === 'white' ? 'text-amber-400' : 'text-slate-300'}`}>
+                        {turn === 'white' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ'} {gameMode === 'ai' && turn === 'black' && '(ИИ...)'}
+                      </span>
+                    </div>
+                  )}
+                  <button onClick={resetGame} className="w-full py-1.5 mt-1 bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-300 font-medium text-xs rounded-lg transition border border-slate-700/50">
+                    🔄 Начать заново
+                  </button>
+                </div>
+              </div>
 
               <div className="w-full lg:w-80 bg-slate-900/80 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-amber-500">
@@ -548,7 +504,6 @@
                 </p>
               </div>
 
-              {/* МОДАЛЬНОЕ ОКНО СИМУЛЯЦИИ СТРАЙПА */}
               {showPayModal && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                   <div className="bg-slate-900 border border-slate-800 max-w-sm w-full p-6 rounded-2xl shadow-2xl text-center">
@@ -586,4 +541,3 @@
     </script>
 </body>
 </html>
-
