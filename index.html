@@ -23,11 +23,47 @@
 
     <script type="text/babel">
         const { useState, useCallback, useEffect, useRef } = React;
+
+        const EMPTY = 0, WHITE = 1, BLACK = 2, WHITE_KING = 3, BLACK_KING = 4;
+        const isWhite = (p) => p === WHITE || p === WHITE_KING;
+        const isBlack = (p) => p === BLACK || p === BLACK_KING;
+        const isKing = (p) => p === WHITE_KING || p === BLACK_KING;
+        const owns = (p, player) => player === "white" ? isWhite(p) : isBlack(p);
+        const opponent = (player) => player === "white" ? "black" : "white";
+
+        function initBoard() {
+          const b = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
+          for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+              if ((r + c) % 2 === 1) {
+                if (r < 3) b[r][c] = BLACK;
+                else if (r > 4) b[r][c] = WHITE;
+              }
+            }
+          }
+          return b;
+        }
+
+        function getJumps(board, r, c, player) {
+          const piece = board[r][c];
+          const jumps = [];
+          if (!owns(piece, player)) return jumps;
+          const king = isKing(piece);
+          const oppFn = player === "white" ? isBlack : isWhite;
+          const dirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+          if (king) {
+            for (const [dr, dc] of dirs) {
+              let nr = r + dr, nc = c + dc;
+              while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                if (owns(board[nr][nc], player)) break;
+                if (oppFn(board[nr][nc])) {
+                  let lr = nr + dr, lc = nc + dc;
+                  while (lr >= 0 && lr < 8 && lc >= 0 && lc < 8 && board[lr][lc] === EMPTY) {
                     jumps.push({ from: [r, c], to: [lr, lc], captured: [nr, nc], capturedPiece: board[nr][nc] });
                     lr += dr; lc += dc;
                   }
                   break;
-                }
                 nr += dr; nc += dc;
               }
             }
