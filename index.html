@@ -64,6 +64,7 @@
                     lr += dr; lc += dc;
                   }
                   break;
+                }
                 nr += dr; nc += dc;
               }
             }
@@ -209,7 +210,6 @@
         function Piece({ player, king, selected, mustJump, skin }) {
           const isW = player === "white";
           let bgStyle = "";
-          
           let borderColor = isW ? "rgba(0,0,0,0.6)" : "rgba(226,232,240,0.8)";
 
           if (mustJump) borderColor = "#f59e0b";
