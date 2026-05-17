@@ -512,21 +512,28 @@
                   </div>
                 </div>
 
-                <div className="w-full bg-slate-900/80 rounded-xl p-3 border border-slate-800 text-center shadow-md">
-                  {winner ? (
-                    <div className="text-lg font-bold text-emerald-400 font-['Cinzel']">
-                      Победили {winner === 'white' ? 'Белые' : 'Черные'}! 🎉
-                    </div>
-                  ) : (
-                    <div className="flex justify-between items-center px-4 text-sm">
-                      <span className="text-slate-400">Ход:</span>
-                      <span className={`font-bold tracking-wider ${turn === 'white' ? 'text-amber-400' : 'text-slate-300'}`}>
-                        {turn === 'white' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ'} {gameMode === 'ai' && turn === 'black' && '(ИИ...)'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+               <div className="w-full bg-slate-900/80 rounded-xl p-3 border border-slate-800 shadow-md flex flex-col gap-2">
+  {winner ? (
+    <div className="text-center text-base font-bold text-emerald-400 font-['Cinzel']">
+      Победили {winner === 'white' ? 'Белые' : 'Черные'}! 🎉
+    </div>
+  ) : (
+    <div className="flex justify-between items-center px-4 text-sm">
+      <span className="text-slate-400">Ход:</span>
+      <span className={`font-bold tracking-wider ${turn === 'white' ? 'text-amber-400' : 'text-slate-300'}`}>
+        {turn === 'white' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ'} {gameMode === 'ai' && turn === 'black' && '(ИИ...)'}
+      </span>
+    </div>
+  )}
+  
+  {/* Кнопка "Начать заново", которая идеально встанет на любом экране */}
+  <button 
+    onClick={resetGame} 
+    className="w-full py-1.5 mt-1 bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-300 font-medium text-xs rounded-lg transition border border-slate-700/50"
+  >
+    🔄 Начать заново
+  </button>
+</div>
 
               <div className="w-full lg:w-80 bg-slate-900/80 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-amber-500">
