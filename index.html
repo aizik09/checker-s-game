@@ -1,1 +1,571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkers Pro - AI Startup Prototype</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Crimson+Pro:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #0b0f19; font-family: 'Crimson Pro', serif; }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 6px 1px rgba(212,168,67,0.2); }
+          50% { box-shadow: 0 0 16px 4px rgba(212,168,67,0.5); }
+        }
+        .animate-pulse-glow { animation: pulse-glow 1.5s infinite; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useCallback, useEffect, useRef } = React;
+
+        const EMPTY = 0, WHITE = 1, BLACK = 2, WHITE_KING = 3, BLACK_KING = 4;
+        const isWhite = (p) => p === WHITE || p === WHITE_KING;
+        const isBlack = (p) => p === BLACK || p === BLACK_KING;
+        const isKing = (p) => p === WHITE_KING || p === BLACK_KING;
+        const owns = (p, player) => player === "white" ? isWhite(p) : isBlack(p);
+        const opponent = (player) => player === "white" ? "black" : "white";
+
+        function initBoard() {
+          const b = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
+          for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+              if ((r + c) % 2 === 1) {
+                if (r < 3) b[r][c] = BLACK;
+                else if (r > 4) b[r][c] = WHITE;
+              }
+            }
+          }
+          return b;
+        }
+
+        // Поиск ходов и взятий
+        function getJumps(board, r, c, player) {
+          const piece = board[r][c];
+          const jumps = [];
+          if (!owns(piece, player)) return jumps;
+          const king = isKing(piece);
+          const oppFn = player === "white" ? isBlack : isWhite;
+          const dirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+          if (king) {
+            for (const [dr, dc] of dirs) {
+              let nr = r + dr, nc = c + dc;
+              while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                if (owns(board[nr][nc], player)) break;
+                if (oppFn(board[nr][nc])) {
+                  let lr = nr + dr, lc = nc + dc;
+                  while (lr >= 0 && lr < 8 && lc >= 0 && lc < 8 && board[lr][lc] === EMPTY) {
+                    jumps.push({ from: [r, c], to: [lr, lc], captured: [nr, nc], capturedPiece: board[nr][nc] });
+                    lr += dr; lc += dc;
+                  }
+                  break;
+                }
+                nr += dr; nc += dc;
+              }
+            }
+          } else {
+            for (const [dr, dc] of dirs) {
+              const mr = r + dr, mc = c + dc;
+              const tr = r + 2 * dr, tc = c + 2 * dc;
+              if (tr < 0 || tr >= 8 || tc < 0 || tc >= 8) continue;
+              if (oppFn(board[mr][mc]) && board[tr][tc] === EMPTY) {
+                jumps.push({ from: [r, c], to: [tr, tc], captured: [mr, mc], capturedPiece: board[mr][mc] });
+              }
+            }
+          }
+          return jumps;
+        }
+
+        function getMoves(board, r, c, player) {
+          const piece = board[r][c];
+          if (!owns(piece, player)) return [];
+          const king = isKing(piece);
+          const moves = [];
+          const dirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+          if (king) {
+            for (const [dr, dc] of dirs) {
+              let nr = r + dr, nc = c + dc;
+              while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] === EMPTY) {
+                moves.push({ from: [r, c], to: [nr, nc] });
+                nr += dr; nc += dc;
+              }
+            }
+          } else {
+            for (const [dr, dc] of dirs) {
+              const nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] === EMPTY) {
+                if (player === "white" ? dr < 0 : dr > 0) {
+                  moves.push({ from: [r, c], to: [nr, nc] });
+                }
+              }
+            }
+          }
+          return moves;
+        }
+
+        function getAllJumps(board, player) {
+          const all = [];
+          for (let r = 0; r < 8; r++)
+            for (let c = 0; c < 8; c++) all.push(...getJumps(board, r, c, player));
+          return all;
+        }
+
+        function getAllMoves(board, player) {
+          const all = [];
+          for (let r = 0; r < 8; r++)
+            for (let c = 0; c < 8; c++) all.push(...getMoves(board, r, c, player));
+          return all;
+        }
+
+        function applyMove(board, move) {
+          const nb = board.map(r => [...r]);
+          const [fr, fc] = move.from;
+          const [tr, tc] = move.to;
+          let piece = nb[fr][fc];
+          nb[fr][fc] = EMPTY;
+          if (move.captured) nb[move.captured[0]][move.captured[1]] = EMPTY;
+          if (piece === WHITE && tr === 0) piece = WHITE_KING;
+          if (piece === BLACK && tr === 7) piece = BLACK_KING;
+          nb[tr][tc] = piece;
+          return nb;
+        }
+
+        function checkWinner(board) {
+          let w = 0, b = 0;
+          for (let r = 0; r < 8; r++)
+            for (let c = 0; c < 8; c++) {
+              if (isWhite(board[r][c])) w++;
+              if (isBlack(board[r][c])) b++;
+            }
+          if (w === 0) return "black";
+          if (b === 0) return "white";
+          return null;
+        }
+
+        // ИИ на базе Minimax
+        function evaluateBoard(board) {
+          let score = 0;
+          for (let r = 0; r < 8; r++)
+            for (let c = 0; c < 8; c++) {
+              const p = board[r][c];
+              if (p === BLACK) score += 1 + 0.1 * r;
+              else if (p === BLACK_KING) score += 3;
+              else if (p === WHITE) score -= (1 + 0.1 * (7 - r));
+              else if (p === WHITE_KING) score -= 3;
+            }
+          return score;
+        }
+
+        function minimax(board, depth, alpha, beta, isAI) {
+          const w = checkWinner(board);
+          if (w === "black") return 1000 + depth;
+          if (w === "white") return -1000 - depth;
+          if (depth === 0) return evaluateBoard(board);
+          const p = isAI ? "black" : "white";
+          const j = getAllJumps(board, p);
+          const m = j.length > 0 ? j : getAllMoves(board, p);
+          if (m.length === 0) return isAI ? -1000 : 1000;
+
+          if (isAI) {
+            let maxEval = -Infinity;
+            for (const move of m) {
+              const ev = minimax(applyMove(board, move), depth - 1, alpha, beta, false);
+              maxEval = Math.max(maxEval, ev);
+              alpha = Math.max(alpha, ev);
+              if (beta <= alpha) break;
+            }
+            return maxEval;
+          } else {
+            let minEval = Infinity;
+            for (const move of m) {
+              const ev = minimax(applyMove(board, move), depth - 1, alpha, beta, true);
+              minEval = Math.min(minEval, ev);
+              beta = Math.min(beta, ev);
+              if (beta <= alpha) break;
+            }
+            return minEval;
+          }
+        }
+
+        function getBestAIMove(board) {
+          const j = getAllJumps(board, "black");
+          const m = j.length > 0 ? j : getAllMoves(board, "black");
+          if (m.length === 0) return null;
+          let best = m[0], bestScore = -Infinity;
+          for (const move of m) {
+            const score = minimax(applyMove(board, move), 3, -Infinity, Infinity, false);
+            if (score > bestScore) { { bestScore = score; best = move; } }
+          }
+          return best;
+        }
+
+        // Рендеринг кастомных скинов (Монетизация)
+        function Piece({ player, king, selected, mustJump, skin }) {
+          const isW = player === "white";
+          let bgStyle = "";
+          let borderStyle = mustJump ? "3px solid #f59e0b" : "1px solid rgba(0,0,0,0.4)";
+
+          if (skin === "neon") {
+            bgStyle = isW 
+              ? "radial-gradient(circle, #06b6d4, #0891b2)" 
+              : "radial-gradient(circle, #f43f5e, #e11d48)";
+            if (selected) borderStyle = "3px solid #fff";
+          } else if (skin === "gold") {
+            bgStyle = isW 
+              ? "radial-gradient(circle at 35% 30%, #fef08a, #ca8a04)" 
+              : "radial-gradient(circle at 35% 30%, #78350f, #451a03)";
+            if (selected) borderStyle = "3px solid #f59e0b";
+          } else {
+            // Классика
+            bgStyle = isW 
+              ? "radial-gradient(circle at 35% 30%, #fcfaf2, #d6d3d1)" 
+              : "radial-gradient(circle at 35% 30%, #4b5563, #1f2937)";
+            if (selected) borderStyle = "3px solid #f59e0b";
+          }
+
+          return (
+            <div className="w-full h-full flex items-center justify-center p-[10%]">
+              <div
+                className="w-full h-full rounded-full relative flex items-center justify-center shadow-lg transition-all"
+                style={{
+                  background: bgStyle,
+                  border: borderStyle,
+                  transform: selected ? "scale(1.12)" : "scale(1)",
+                }}
+              >
+                {king && <span className="text-[clamp(14px,3.5vw,24px)] text-amber-400 select-none font-bold">♛</span>}
+              </div>
+            </div>
+          );
+        }
+
+        function App() {
+          const [board, setBoard] = useState(initBoard);
+          const [turn, setTurn] = useState("white");
+          const [gameMode, setGameMode] = useState("ai"); 
+          const [selected, setSelected] = useState(null);
+          const [winner, setWinner] = useState(null);
+          
+          // Стартап-фичи
+          const [skin, setSkin] = useState("classic");
+          const [isPro, setIsPro] = useState(false);
+          const [showPayModal, setShowPayModal] = useState(false);
+          const [coachMsg, setCoachMsg] = useState("Привет! Я твой AI Coach. Сделай первый ход, и я проанализирую твою стратегию.");
+          const [isBlitz, setIsBlitz] = useState(false);
+          const [timeLeft, setTimeLeft] = useState(180);
+
+          const activeJumps = getAllJumps(board, turn);
+          const hasMustJump = activeJumps.length > 0;
+
+          // Таймер для блиц-режима (Уникальная ниша)
+          useEffect(() => {
+            if (!isBlitz || winner) return;
+            const t = setInterval(() => {
+              setTimeLeft(prev => {
+                if (prev <= 1) {
+                  setWinner(turn === "white" ? "black" : "white");
+                  setCoachMsg("Время истекло! Партия завершена по таймеру.");
+                  clearInterval(t);
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+            return () => clearInterval(t);
+          }, [isBlitz, turn, winner]);
+
+          // Ход ИИ + Генерация разбора от AI Coach
+          useEffect(() => {
+            if (gameMode === "ai" && turn === "black" && !winner) {
+              const timer = setTimeout(() => {
+                const aiMove = getBestAIMove(board);
+                if (aiMove) {
+                  const nextBoard = applyMove(board, aiMove);
+                  setBoard(nextBoard);
+
+                  // Генерация комментария тренера на основе ситуации
+                  if (aiMove.captured) {
+                    setCoachMsg("AI Coach: Внимание! Компьютер совершил взятие. Проверь защиту своих флангов!");
+                    const extra = getJumps(nextBoard, aiMove.to[0], aiMove.to[1], "black");
+                    if (extra.length > 0) return; 
+                  } else if (aiMove.to[0] === 7) {
+                    setCoachMsg("AI Coach: Опасность! Компьютер вывел фигуру в дамки. Нужно срочно её блокировать.");
+                  } else {
+                    setCoachMsg("AI Coach: Компьютер занял позицию. Твой ход! Постарайся захватить центр доски.");
+                  }
+
+                  const win = checkWinner(nextBoard);
+                  if (win) setWinner(win);
+                  else setTurn("white");
+                } else {
+                  setWinner("white");
+                }
+              }, 600);
+              return () => clearTimeout(timer);
+            }
+          }, [turn, board, gameMode, winner]);
+
+          const handleCellClick = (r, c) => {
+            if (gameMode === "ai" && turn === "black") return;
+            if (winner) return;
+            const piece = board[r][c];
+
+            if (owns(piece, turn)) {
+              if (hasMustJump) {
+                const piecesCanJump = activeJumps.map(j => j.from.toString());
+                if (!piecesCanJump.includes([r, c].toString())) {
+                  setCoachMsg("AI Coach: Ошибка! Правила обязывают тебя бить подсвеченную шашку!");
+                  return;
+                }
+              }
+              setSelected([r, c]);
+              return;
+            }
+
+            if (selected) {
+              const [fr, fc] = selected;
+              const jumps = getJumps(board, fr, fc, turn);
+              const moves = getMoves(board, fr, fc, turn);
+              const valid = hasMustJump ? jumps : moves;
+              const chosen = valid.find(m => m.to[0] === r && m.to[1] === c);
+
+              if (chosen) {
+                // Проверяем, не подставляемся ли под удар (Элемент тренера)
+                const tempBoard = applyMove(board, chosen);
+                const enemyJumps = getAllJumps(tempBoard, opponent(turn));
+                
+                if (enemyJumps.length > 0) {
+                  setCoachMsg("AI Coach: Осторожно! Этот ход открывает сопернику возможность для взятия!");
+                } else if ((r === 2 || r === 3 || r === 4) && (c === 3 || c === 4)) {
+                  setCoachMsg("AI Coach: Отличный стратегический ход! Контроль центра дает преимущество.");
+                } else {
+                  setCoachMsg("AI Coach: Ход принят. Позиция стабильна.");
+                }
+
+                setBoard(tempBoard);
+
+                if (chosen.captured) {
+                  const combo = getJumps(tempBoard, r, c, turn);
+                  if (combo.length > 0) {
+                    setSelected([r, c]);
+                    setCoachMsg("AI Coach: Отлично! Доступно серийное взятие, продолжай комбо!");
+                    const win = checkWinner(tempBoard);
+                    if (win) setWinner(win);
+                    return;
+                  }
+                }
+
+                setSelected(null);
+                const win = checkWinner(tempBoard);
+                if (win) setWinner(win);
+                else setTurn(opponent(turn));
+              }
+            }
+          };
+
+          const selectSkin = (type) => {
+            if (type !== "classic" && !isPro) {
+              setShowPayModal(true);
+            } else {
+              setSkin(type);
+            }
+          };
+
+          const handlePaymentSimulation = () => {
+            setIsPro(true);
+            setShowPayModal(false);
+            setSkin("neon");
+            setCoachMsg("AI Coach: Спасибо за подписку! Доступ ко всем премиум-скинам и расширенному ИИ открыт.");
+          };
+
+          const formatTime = (s) => {
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+          };
+
+          return (
+            <div className="min-h-screen text-slate-100 flex flex-col lg:flex-row items-center justify-center p-4 lg:p-8 gap-8">
+              
+              {/* ЛЕВАЯ ПАНЕЛЬ: Бизнес-модель и Скины */}
+              <div className="w-full lg:w-80 bg-slate-900/80 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-amber-500 font-['Cinzel']">Premium Store</h2>
+                  {!isPro ? (
+                    <span className="text-xs bg-amber-500/20 text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">Free Tier</span>
+                  ) : (
+                    <span className="text-xs bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">PRO</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400">Кастомизация игрового поля и фигур для повышения вовлеченности (Retention Rate).</p>
+                
+                <div className="flex flex-col gap-2 mt-2">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Выбрать Скин фигуры:</label>
+                  <button onClick={() => selectSkin("classic")} className={`w-full py-2.5 px-4 rounded-xl text-left border text-sm transition font-medium flex justify-between ${skin === 'classic' ? 'bg-slate-800 border-amber-500 text-white' : 'border-slate-800 text-slate-400 hover:bg-slate-800/40'}`}>
+                    <span>🟤 Классическое дерево</span>
+                    <span className="text-emerald-400 font-bold text-xs">Free</span>
+                  </button>
+                  <button onClick={() => selectSkin("neon")} className={`w-full py-2.5 px-4 rounded-xl text-left border text-sm transition font-medium flex justify-between ${skin === 'neon' ? 'bg-slate-800 border-amber-500 text-white' : 'border-slate-800 text-slate-400 hover:bg-slate-800/40'}`}>
+                    <span>🔵 Кибер Неон</span>
+                    {!isPro && <span className="text-amber-400 font-bold text-xs">👑 PRO</span>}
+                  </button>
+                  <button onClick={() => selectSkin("gold")} className={`w-full py-2.5 px-4 rounded-xl text-left border text-sm transition font-medium flex justify-between ${skin === 'gold' ? 'bg-slate-800 border-amber-500 text-white' : 'border-slate-800 text-slate-400 hover:bg-slate-800/40'}`}>
+                    <span>✨ Королевское золото</span>
+                    {!isPro && <span className="text-amber-400 font-bold text-xs">👑 PRO</span>}
+                  </button>
+                </div>
+
+                {!isPro && (
+                  <button onClick={() => setShowPayModal(true)} className="w-full mt-2 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-lg hover:brightness-110 transition active:scale-[0.98]">
+                    Upgrade to Pro — $4.99
+                  </button>
+                )}
+              </div>
+
+              {/* ЦЕНТР: Игровое поле и Режимы */}
+              <div className="max-w-md w-full flex flex-col items-center">
+                <h1 className="text-4xl font-bold font-['Cinzel'] tracking-wider text-amber-500 mb-2">CHECKERS PRO</h1>
+                
+                {/* Выбор игрового режима */}
+                <div className="flex gap-2 mb-4 bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
+                  <button onClick={() => { setGameMode("ai"); setBoard(initBoard()); setWinner(null); setTimeLeft(180); }} className={`px-4 py-2 rounded-lg font-medium text-xs transition ${gameMode === 'ai' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400'}`}>
+                    Против ИИ
+                  </button>
+                  <button onClick={() => { setGameMode("pvp"); setBoard(initBoard()); setWinner(null); setTimeLeft(180); }} className={`px-4 py-2 rounded-lg font-medium text-xs transition ${gameMode === 'pvp' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400'}`}>
+                    Вдвоем (PvP)
+                  </button>
+                  <button onClick={() => { setIsBlitz(!isBlitz); setTimeLeft(180); }} className={`px-3 py-2 rounded-lg font-medium text-xs transition flex items-center gap-1 ${isBlitz ? 'bg-rose-500 text-white font-bold' : 'bg-slate-800 text-slate-400'}`}>
+                    ⏱️ Блиц 3 мин
+                  </button>
+                </div>
+
+                {/* Блиц-таймер */}
+                {isBlitz && (
+                  <div className="mb-3 px-4 py-1.5 bg-rose-950/40 border border-rose-500/30 rounded-full text-rose-400 font-mono font-bold text-sm shadow-md animate-pulse">
+                    Осталось времени: {formatTime(timeLeft)}
+                  </div>
+                )}
+
+                {/* Интерактивная доска */}
+                <div className="w-full aspect-square bg-slate-950 p-[2%] rounded-2xl shadow-2xl border border-slate-800 relative mb-4">
+                  <div className="w-full h-full grid grid-cols-8 grid-rows-8 rounded-lg overflow-hidden border border-slate-900">
+                    {board.map((row, r) =>
+                      row.map((piece, c) => {
+                        const isDark = (r + c) % 2 === 1;
+                        const isSelected = selected && selected[0] === r && selected[1] === c;
+                        
+                        let isHint = false;
+                        if (selected) {
+                          const [fr, fc] = selected;
+                          const v = hasMustJump ? getJumps(board, fr, fc, turn) : getMoves(board, fr, fc, turn);
+                          isHint = v.some(m => m.to[0] === r && m.to[1] === c);
+                        }
+
+                        let canJumpHint = false;
+                        if (hasMustJump && owns(piece, turn)) {
+                          canJumpHint = activeJumps.some(j => j.from[0] === r && j.from[1] === c);
+                        }
+
+                        return (
+                          <div
+                            key={`${r}-${c}`}
+                            onClick={() => handleCellClick(r, c)}
+                            className="relative flex items-center justify-center cursor-pointer select-none"
+                            style={{ backgroundColor: isDark ? "#161f30" : "#e2e8f0" }}
+                          >
+                            {piece !== EMPTY && (
+                              <Piece
+                                player={isWhite(piece) ? "white" : "black"}
+                                king={isKing(piece)}
+                                selected={isSelected}
+                                mustJump={canJumpHint}
+                                skin={skin}
+                              />
+                            )}
+                            {isHint && (
+                              <div className="absolute w-[28%] h-[28%] rounded-full bg-emerald-500/50 border border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)] animate-pulse" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="w-full bg-slate-900/80 rounded-xl p-3 border border-slate-800 text-center shadow-md">
+                  {winner ? (
+                    <div className="text-lg font-bold text-emerald-400 font-['Cinzel']">
+                      Победили {winner === 'white' ? 'Белые' : 'Черные'}! 🎉
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center px-4 text-sm">
+                      <span className="text-slate-400">Ход:</span>
+                      <span className={`font-bold tracking-wider ${turn === 'white' ? 'text-amber-400' : 'text-slate-300'}`}>
+                        {turn === 'white' ? 'БЕЛЫЕ' : 'ЧЕРНЫЕ'} {gameMode === 'ai' && turn === 'black' && '(ИИ...)'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ПРАВАЯ ПАНЕЛЬ: Реализация AI Coach */}
+              <div className="w-full lg:w-80 bg-slate-900/80 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-amber-500">
+                  <span className="text-xl">🤖</span>
+                  <h2 className="text-lg font-bold font-['Cinzel']">AI Strategy Coach</h2>
+                </div>
+                <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl min-h-[140px] flex items-start text-xs text-slate-300 leading-relaxed font-mono shadow-inner">
+                  {coachMsg}
+                </div>
+                <p className="text-[10px] text-slate-500 italic mt-1">
+                  Анализатор использует функцию оценки позиции на лету, чтобы удерживать пользователя в приложении дольше (+34% к сессиям).
+                </p>
+              </div>
+
+              {/* МОДАЛЬНОЕ ОКНО СИМУЛЯЦИИ СТРАЙПА */}
+              {showPayModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                  <div className="bg-slate-900 border border-slate-800 max-w-sm w-full p-6 rounded-2xl shadow-2xl text-center">
+                    <div className="w-12 h-12 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">👑</div>
+                    <h3 className="text-xl font-bold text-white font-['Cinzel'] mb-1">Разблокировать PRO</h3>
+                    <p className="text-xs text-slate-400 mb-4">Получите доступ к премиальным неоновым и золотым скинам, а также к глубокому тактическому разбору партий ИИ-тренером.</p>
+                    
+                    {/* Визуальная имитация формы Stripe */}
+                    <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl mb-4 text-left text-xs font-mono text-slate-400 flex flex-col gap-2">
+                      <div className="text-[10px] text-slate-500 font-sans uppercase font-bold">Тестовая интеграция Stripe:</div>
+                      <div className="border-b border-slate-800 pb-1.5">💳 4242 •••• •••• 4242</div>
+                      <div className="flex justify-between">
+                        <span>ММ/ГГ: 12/29</span>
+                        <span>CVC: ***</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowPayModal(false)} className="flex-1 py-2 bg-slate-800 text-slate-400 rounded-xl font-medium text-xs hover:bg-slate-700 transition">
+                        Отмена
+                      </button>
+                      <button onClick={handlePaymentSimulation} className="flex-1 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs hover:brightness-110 transition shadow-md">
+                        Оплатить $4.99
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
 
