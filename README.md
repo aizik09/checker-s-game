@@ -6,7 +6,7 @@
 
 ## 🌍 Ссылки
 * **Рабочий проект (Поиграть в браузере):** https://aizik09.github.io/checker-s-game/
-* **GitHub Репозиторий:**
+* **GitHub Репозиторий:** https://github.com/aizik09/checker-s-game
 
 ---
 
